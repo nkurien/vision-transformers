@@ -2,3 +2,5 @@ CLAUDE.md
 PROJECT_BRIEF.md
 .venv/
 .vscode/
+__pycache__/
+*.pyc
