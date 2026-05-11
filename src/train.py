@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -184,11 +185,15 @@ def train_one_epoch(
     total_correct = 0
     num_batches   = 0
 
-    for start in range(0, N - batch_size + 1, batch_size):
+    num_steps = (N - batch_size) // batch_size + 1
+    pbar = tqdm(range(0, N - batch_size + 1, batch_size), total=num_steps,
+                unit="batch", leave=False)
+
+    for start in pbar:
         idx      = indices[start : start + batch_size]
         xb, yb   = X[idx], y[idx]
 
-        logits           = model.forward(xb, training=True)
+        logits            = model.forward(xb, training=True)
         loss, grad_logits = _cross_entropy(logits, yb)
         model.backward(grad_logits)
 
@@ -198,6 +203,9 @@ def train_one_epoch(
         total_loss    += loss
         total_correct += (logits.argmax(axis=-1) == yb).sum()
         num_batches   += 1
+
+        pbar.set_postfix(loss=f"{total_loss / num_batches:.4f}",
+                         acc=f"{total_correct / (num_batches * batch_size):.4f}")
 
     return total_loss / max(num_batches, 1), total_correct / N
 
