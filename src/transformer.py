@@ -199,7 +199,11 @@ class ViTBlock:
         d_attn_out = self._drop_backward(d_attn_dropped, c["drop_mask1"])
 
         # MultiHeadAttention backward (Q = K = V = x_norm1 in self-attention)
-        _, attn_input_grads = self.attn.backward(d_attn_out)
+        attn_weight_grads, attn_input_grads = self.attn.backward(d_attn_out)
+        self.attn.grad_W_q = attn_weight_grads["dW_q"]
+        self.attn.grad_W_k = attn_weight_grads["dW_k"]
+        self.attn.grad_W_v = attn_weight_grads["dW_v"]
+        self.attn.grad_W_o = attn_weight_grads["dW_o"]
         d_x_norm1 = attn_input_grads["dQ"] + attn_input_grads["dK"] + attn_input_grads["dV"]
 
         # LayerNorm1
