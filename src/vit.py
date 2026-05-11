@@ -67,6 +67,8 @@ class VisionTransformer:
         self.head_W   = np.random.randn(embed_dim, num_classes) * head_scale
         self.head_b   = np.zeros(num_classes)
 
+        self._cache: dict = {}
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -100,8 +102,10 @@ class VisionTransformer:
         tokens = self.encoder.forward(tokens, training=training)
 
         # 6. Extract [CLS] output and classify
-        cls_out = tokens[:, 0]                       # (B, embed_dim)
+        cls_out = tokens[:, 0]                         # (B, embed_dim)
         logits  = cls_out @ self.head_W + self.head_b  # (B, num_classes)
+
+        self._cache = dict(patches=patches, cls_out=cls_out)
         return logits
 
     def freeze_layers(self, until: int) -> None:
@@ -114,6 +118,58 @@ class VisionTransformer:
         total = len(self.encoder.blocks)
         for i, block in enumerate(self.encoder.blocks):
             block.frozen = i < (total - n)
+
+    def backward(self, grad_logits: np.ndarray) -> None:
+        """Backpropagate from logits to all learnable parameters.
+
+        Args:
+            grad_logits: (B, num_classes) — gradient w.r.t. forward logits output.
+
+        Stores on self:
+            grad_head_W        (embed_dim, num_classes)
+            grad_head_b        (num_classes,)
+            grad_cls_token     (1, 1, embed_dim)
+            grad_pos_encoding  (1, num_patches+1, embed_dim)
+            grad_patch_embed   (patch_dim, embed_dim)
+        Block / attention weight gradients are stored on their respective modules.
+        """
+        assert self._cache, "forward() must be called before backward()"
+        patches = self._cache["patches"]   # (B, num_patches, patch_dim)
+        cls_out = self._cache["cls_out"]   # (B, embed_dim)
+
+        B          = grad_logits.shape[0]
+        patch_dim  = patches.shape[2]
+
+        # 1. Classification head: logits = cls_out @ head_W + head_b
+        self.grad_head_W = cls_out.T @ grad_logits           # (embed_dim, num_classes)
+        self.grad_head_b = grad_logits.sum(axis=0)           # (num_classes,)
+        grad_cls_out     = grad_logits @ self.head_W.T       # (B, embed_dim)
+
+        # 2. CLS extraction: cls_out = tokens[:, 0]
+        #    Route gradient back to position 0; all other positions get zero.
+        num_tokens       = self.pos_embed.shape[1]
+        grad_tokens      = np.zeros((B, num_tokens, self.embed_dim))
+        grad_tokens[:, 0] = grad_cls_out
+
+        # 3. TransformerEncoder
+        grad_tokens = self.encoder.backward(grad_tokens)     # (B, num_tokens, embed_dim)
+
+        # 4. Positional encoding (addition — grad flows straight through)
+        #    pos_embed is (1, num_tokens, embed_dim), broadcast over batch.
+        self.grad_pos_encoding = grad_tokens.sum(axis=0, keepdims=True)
+
+        # 5. Undo concatenation of [CLS] and patch tokens
+        grad_cls_broadcast  = grad_tokens[:, :1, :]          # (B, 1, embed_dim)
+        grad_patch_tokens   = grad_tokens[:, 1:, :]          # (B, num_patches, embed_dim)
+
+        # 6. Patch embedding: patch_tokens = patches @ patch_embed
+        self.grad_patch_embed = (
+            patches.reshape(-1, patch_dim).T
+            @ grad_patch_tokens.reshape(-1, self.embed_dim)  # (patch_dim, embed_dim)
+        )
+
+        # 7. [CLS] token: broadcast (1,1,D) → (B,1,D), so sum over batch
+        self.grad_cls_token = grad_cls_broadcast.sum(axis=0, keepdims=True)  # (1,1,embed_dim)
 
     # ------------------------------------------------------------------
     # Private helpers
