@@ -103,9 +103,14 @@ def cosine_schedule(
     lr_max: float,
     lr_min: float = 1e-6,
 ) -> float:
-    """Linear warmup to lr_max, then cosine decay to lr_min."""
+    """Linear warmup from lr_max/warmup_epochs to lr_max, then cosine decay to lr_min.
+
+    Warmup starts at a nonzero value (lr_max / warmup_epochs) so the first
+    epoch produces visible learning. Starting from ~0 (lr_min) made the first
+    epoch a no-op with Adam's bias correction amplifying the tiny LR.
+    """
     if epoch < warmup_epochs:
-        return lr_min + (lr_max - lr_min) * epoch / max(warmup_epochs, 1)
+        return lr_max * (epoch + 1) / max(warmup_epochs, 1)
     progress = (epoch - warmup_epochs) / max(total_epochs - warmup_epochs, 1)
     return lr_min + 0.5 * (lr_max - lr_min) * (1.0 + np.cos(np.pi * progress))
 
