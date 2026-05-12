@@ -1,0 +1,10 @@
+numpy==2.4.4
+pillow
+matplotlib
+jupyter
+tqdm==4.67.3
+pytest==9.0.3
+ruff==0.15.12
+
+# Phase 3 only — export timm weights to NumPy (not a runtime dependency)
+# timm
