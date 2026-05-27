@@ -75,7 +75,7 @@ def main():
 
     freeze_until = tcfg["freeze_until"]
     model.freeze_layers(until=freeze_until)
-    n_frozen = len(model.encoder.blocks) + abs(freeze_until)
+    n_frozen = len(model.encoder.blocks) - abs(freeze_until)
     print(f"Frozen {n_frozen}/{len(model.encoder.blocks)} transformer blocks")
 
     print(f"Training for {epochs} epochs  |  batch {batch_size}  |  lr {tcfg['lr']:.1e}")
