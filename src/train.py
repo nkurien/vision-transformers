@@ -92,6 +92,33 @@ def _save_checkpoint(model, epoch: int) -> None:
     np.save(f"weights/checkpoint_epoch_{epoch}.npy", state, allow_pickle=True)
 
 
+def load_weights(model, path: str) -> None:
+    """Load a checkpoint or exported pretrained weights into model in-place.
+
+    Accepts any .npy file saved by _save_checkpoint or export_timm_weights.py —
+    both use the same key schema.
+    """
+    state = np.load(path, allow_pickle=True).item()
+    model.patch_embed[:] = state["patch_embed"]
+    model.cls_token[:]   = state["cls_token"]
+    model.pos_embed[:]   = state["pos_embed"]
+    model.head_W[:]      = state["head_W"]
+    model.head_b[:]      = state["head_b"]
+    for i, block in enumerate(model.encoder.blocks):
+        block.norm1.gamma[:] = state[f"b{i}_norm1_gamma"]
+        block.norm1.beta[:]  = state[f"b{i}_norm1_beta"]
+        block.attn.W_q[:]    = state[f"b{i}_W_q"]
+        block.attn.W_k[:]    = state[f"b{i}_W_k"]
+        block.attn.W_v[:]    = state[f"b{i}_W_v"]
+        block.attn.W_o[:]    = state[f"b{i}_W_o"]
+        block.norm2.gamma[:] = state[f"b{i}_norm2_gamma"]
+        block.norm2.beta[:]  = state[f"b{i}_norm2_beta"]
+        block.W1[:]          = state[f"b{i}_W1"]
+        block.b1[:]          = state[f"b{i}_b1"]
+        block.W2[:]          = state[f"b{i}_W2"]
+        block.b2[:]          = state[f"b{i}_b2"]
+
+
 # ---------------------------------------------------------------------------
 # Learning rate schedule
 # ---------------------------------------------------------------------------

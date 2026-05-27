@@ -18,6 +18,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+from train import load_weights
 
 
 # ---------------------------------------------------------------------------
@@ -132,29 +133,6 @@ def _map_weights(state_dict, num_layers: int) -> dict:
     return out
 
 
-def _load_weights(model, state: dict) -> None:
-    """Write exported weights back into a VisionTransformer instance in-place."""
-    model.patch_embed[:] = state["patch_embed"]
-    model.cls_token[:]   = state["cls_token"]
-    model.pos_embed[:]   = state["pos_embed"]
-    model.head_W[:]      = state["head_W"]
-    model.head_b[:]      = state["head_b"]
-
-    for i, block in enumerate(model.encoder.blocks):
-        block.norm1.gamma[:] = state[f"b{i}_norm1_gamma"]
-        block.norm1.beta[:]  = state[f"b{i}_norm1_beta"]
-        block.attn.W_q[:]    = state[f"b{i}_W_q"]
-        block.attn.W_k[:]    = state[f"b{i}_W_k"]
-        block.attn.W_v[:]    = state[f"b{i}_W_v"]
-        block.attn.W_o[:]    = state[f"b{i}_W_o"]
-        block.norm2.gamma[:] = state[f"b{i}_norm2_gamma"]
-        block.norm2.beta[:]  = state[f"b{i}_norm2_beta"]
-        block.W1[:]          = state[f"b{i}_W1"]
-        block.b1[:]          = state[f"b{i}_b1"]
-        block.W2[:]          = state[f"b{i}_W2"]
-        block.b2[:]          = state[f"b{i}_b2"]
-
-
 def _validate(timm_model, our_model, model_name: str) -> None:
     """Run both models on the same random input and report similarity.
 
@@ -243,6 +221,11 @@ def main():
     state   = _map_weights(state_dict, num_layers=cfg["num_layers"])
     print(f"  {len(state)} keys exported")
 
+    os.makedirs(args.output, exist_ok=True)
+    out_path = os.path.join(args.output, f"{args.model}_pretrained.npy")
+    np.save(out_path, state, allow_pickle=True)
+    print(f"\nSaved → {out_path}")
+
     if args.validate:
         from vit import VisionTransformer
         our_model = VisionTransformer(
@@ -255,14 +238,9 @@ def main():
             num_classes=cfg["num_classes"],
         )
         print("Loading weights into NumPy model...")
-        _load_weights(our_model, state)
+        load_weights(our_model, out_path)
         print("Validating...")
         _validate(timm_model, our_model, args.model)
-
-    os.makedirs(args.output, exist_ok=True)
-    out_path = os.path.join(args.output, f"{args.model}_pretrained.npy")
-    np.save(out_path, state, allow_pickle=True)
-    print(f"\nSaved → {out_path}")
 
 
 if __name__ == "__main__":
