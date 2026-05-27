@@ -4,3 +4,6 @@ PROJECT_BRIEF.md
 .vscode/
 __pycache__/
 *.pyc
+data/
+weights/
+.DS_Store
