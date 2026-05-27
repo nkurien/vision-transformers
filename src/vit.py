@@ -47,7 +47,8 @@ class VisionTransformer:
 
         # Patch embedding projection
         scale = np.sqrt(2.0 / (patch_dim + embed_dim))
-        self.patch_embed = np.random.randn(patch_dim, embed_dim) * scale
+        self.patch_embed      = np.random.randn(patch_dim, embed_dim) * scale
+        self.patch_embed_bias = np.zeros(embed_dim)
 
         # Learnable [CLS] token and positional encoding
         self.cls_token = np.zeros((1, 1, embed_dim))
@@ -92,7 +93,7 @@ class VisionTransformer:
         patches = self._extract_patches(x)
 
         # 2. Linear patch embedding: (B, num_patches, embed_dim)
-        tokens = patches @ self.patch_embed
+        tokens = patches @ self.patch_embed + self.patch_embed_bias
 
         # 3. Prepend [CLS] token: (B, num_patches+1, embed_dim)
         cls = np.broadcast_to(self.cls_token, (B, 1, self.embed_dim))
@@ -170,11 +171,12 @@ class VisionTransformer:
         grad_cls_broadcast  = grad_tokens[:, :1, :]          # (B, 1, embed_dim)
         grad_patch_tokens   = grad_tokens[:, 1:, :]          # (B, num_patches, embed_dim)
 
-        # 6. Patch embedding: patch_tokens = patches @ patch_embed
+        # 6. Patch embedding: patch_tokens = patches @ patch_embed + patch_embed_bias
         self.grad_patch_embed = (
             patches.reshape(-1, patch_dim).T
             @ grad_patch_tokens.reshape(-1, self.embed_dim)  # (patch_dim, embed_dim)
         )
+        self.grad_patch_embed_bias = grad_patch_tokens.reshape(-1, self.embed_dim).sum(axis=0)
 
         # 7. [CLS] token: broadcast (1,1,D) → (B,1,D), so sum over batch
         self.grad_cls_token = grad_cls_broadcast.sum(axis=0, keepdims=True)  # (1,1,embed_dim)
@@ -197,5 +199,5 @@ class VisionTransformer:
         h  = H // P
         w  = W // P
         x  = x.reshape(B, C, h, P, w, P)
-        x  = x.transpose(0, 2, 4, 3, 5, 1)   # (B, h, w, P, P, C)
+        x  = x.transpose(0, 2, 4, 1, 3, 5)   # (B, h, w, C, P, P)
         return x.reshape(B, h * w, P * P * C)

@@ -87,6 +87,7 @@ def main():
         lr=tcfg["lr"],
         batch_size=batch_size,
         warmup_epochs=tcfg["warmup_epochs"],
+        weight_decay=tcfg["weight_decay"],
         checkpoint_prefix="dogs_checkpoint",
     )
 

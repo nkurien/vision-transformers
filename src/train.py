@@ -42,7 +42,8 @@ def _get_params(model) -> list:
         p(model.head_b,      "grad_head_b"),
         p(model.norm.gamma,  "grad_gamma", model.norm),
         p(model.norm.beta,   "grad_beta",  model.norm),
-        p(model.patch_embed, "grad_patch_embed"),
+        p(model.patch_embed,      "grad_patch_embed"),
+        p(model.patch_embed_bias, "grad_patch_embed_bias"),
         p(model.cls_token,   "grad_cls_token"),
         p(model.pos_embed,   "grad_pos_encoding"),
     ]
@@ -80,7 +81,8 @@ def _save_checkpoint(model, epoch: int, prefix: str = "checkpoint") -> None:
         "head_b":      model.head_b,
         "norm_gamma":  model.norm.gamma,
         "norm_beta":   model.norm.beta,
-        "patch_embed": model.patch_embed,
+        "patch_embed":      model.patch_embed,
+        "patch_embed_bias": model.patch_embed_bias,
         "cls_token":   model.cls_token,
         "pos_embed":   model.pos_embed,
     }
@@ -115,7 +117,8 @@ def load_weights(model, path: str, skip_head: bool = False) -> None:
                    on a different number of classes than the pretrained checkpoint.
     """
     state = np.load(path, allow_pickle=True).item()
-    model.patch_embed[:] = state["patch_embed"]
+    model.patch_embed[:]      = state["patch_embed"]
+    model.patch_embed_bias[:] = state["patch_embed_bias"]
     model.cls_token[:]   = state["cls_token"]
     model.pos_embed[:]   = state["pos_embed"]
     model.norm.gamma[:]  = state["norm_gamma"]
@@ -317,6 +320,7 @@ def train(
     lr:      float,
     batch_size: int,
     warmup_epochs: int = 5,
+    weight_decay: float = 1e-5,
     checkpoint_prefix: str = "checkpoint",
 ) -> dict:
     """Train model with cosine LR schedule and early stopping (patience=10).
@@ -336,7 +340,7 @@ def train(
     Returns:
         history: dict of lists — train_loss, train_acc, val_loss, val_acc, lr.
     """
-    optimizer = Adam(_get_params(model), lr=lr)
+    optimizer = Adam(_get_params(model), lr=lr, weight_decay=weight_decay)
     history   = dict(train_loss=[], train_acc=[], val_loss=[], val_acc=[], lr=[])
 
     best_val_loss     = float("inf")

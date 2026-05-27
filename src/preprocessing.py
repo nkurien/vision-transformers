@@ -213,5 +213,5 @@ def extract_patches(x: np.ndarray, patch_size: int) -> np.ndarray:
     assert H % P == 0 and W % P == 0, "H and W must be divisible by patch_size"
     h, w = H // P, W // P
     x = x.reshape(N, C, h, P, w, P)
-    x = x.transpose(0, 2, 4, 3, 5, 1)   # (N, h, w, P, P, C)
+    x = x.transpose(0, 2, 4, 1, 3, 5)   # (N, h, w, C, P, P)
     return x.reshape(N, h * w, P * P * C)

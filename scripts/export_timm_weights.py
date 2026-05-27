@@ -23,9 +23,7 @@ from train import load_weights
 # Helpers
 # ---------------------------------------------------------------------------
 
-_UNSUPPORTED_KEYS = {
-    "patch_embed.proj.bias",  # no patch-embed bias in our model
-}
+_UNSUPPORTED_KEYS: set = set()
 
 
 def _map_weights(state_dict, num_layers: int) -> dict:
@@ -47,9 +45,13 @@ def _map_weights(state_dict, num_layers: int) -> dict:
 
         # --- patch embedding ---
         if key == "patch_embed.proj.weight":
-            # timm: (embed_dim, in_channels, P, P) → (patch_dim, embed_dim)
+            # timm: (embed_dim, C, P, P) → flatten C-first to (patch_dim, embed_dim)
             D = v.shape[0]
             out["patch_embed"] = v.reshape(D, -1).T
+            continue
+
+        if key == "patch_embed.proj.bias":
+            out["patch_embed_bias"] = v  # (embed_dim,)
             continue
 
         if key == "cls_token":
@@ -175,10 +177,10 @@ def _validate(timm_model, our_model, model_name: str) -> None:
     print(f"  Logit mean abs error    : {mae:.4f}")
     print("  Note: small gap expected — patch_embed has no bias in our model,")
     print("        and float32 accumulation differs between NumPy and PyTorch.")
-    if sim > 0.70:
+    if sim > 0.99:
         print("  [PASS] similarity looks good for fine-tuning")
     else:
-        print("  [WARN] low similarity — check weight mapping")
+        print("  [WARN] low similarity — check weight mapping (expected >0.99)")
 
 
 # ---------------------------------------------------------------------------
