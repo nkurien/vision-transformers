@@ -73,17 +73,19 @@ def _make_config(tmp_path, overrides=None):
 def _make_pretrained(tmp_path, model):
     """Save current model weights as a fake pretrained checkpoint."""
     path = str(tmp_path / "pretrained.npy")
-    _save_checkpoint.__wrapped__ = None
     state = {
         "head_W": model.head_W, "head_b": model.head_b,
+        "norm_gamma": model.norm.gamma, "norm_beta": model.norm.beta,
         "patch_embed": model.patch_embed,
         "cls_token": model.cls_token, "pos_embed": model.pos_embed,
     }
     for i, block in enumerate(model.encoder.blocks):
         state.update({
             f"b{i}_norm1_gamma": block.norm1.gamma, f"b{i}_norm1_beta": block.norm1.beta,
-            f"b{i}_W_q": block.attn.W_q, f"b{i}_W_k": block.attn.W_k,
-            f"b{i}_W_v": block.attn.W_v, f"b{i}_W_o": block.attn.W_o,
+            f"b{i}_W_q": block.attn.W_q, f"b{i}_b_q": block.attn.b_q,
+            f"b{i}_W_k": block.attn.W_k, f"b{i}_b_k": block.attn.b_k,
+            f"b{i}_W_v": block.attn.W_v, f"b{i}_b_v": block.attn.b_v,
+            f"b{i}_W_o": block.attn.W_o, f"b{i}_b_o": block.attn.b_o,
             f"b{i}_norm2_gamma": block.norm2.gamma, f"b{i}_norm2_beta": block.norm2.beta,
             f"b{i}_W1": block.W1, f"b{i}_b1": block.b1,
             f"b{i}_W2": block.W2, f"b{i}_b2": block.b2,
@@ -199,6 +201,7 @@ def test_train_dogs_script_runs(tmp_path, monkeypatch):
     load_weights(model, pretrained_path, skip_head=True)
     model.freeze_layers(until=tcfg["freeze_until"])
 
+    os.makedirs("weights", exist_ok=True)
     history = train(
         model, X_train, y_train, X_val, y_val,
         epochs=tcfg["epochs"], lr=tcfg["lr"],

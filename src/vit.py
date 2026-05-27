@@ -3,7 +3,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from transformer import TransformerEncoder
+from transformer import TransformerEncoder, LayerNorm
 
 
 class VisionTransformer:
@@ -62,6 +62,9 @@ class VisionTransformer:
             dropout=dropout,
         )
 
+        # Final LayerNorm (applied to CLS token before classification head)
+        self.norm = LayerNorm(embed_dim)
+
         # Classification head (linear, on [CLS] output only)
         head_scale    = np.sqrt(2.0 / (embed_dim + num_classes))
         self.head_W   = np.random.randn(embed_dim, num_classes) * head_scale
@@ -101,11 +104,12 @@ class VisionTransformer:
         # 5. Transformer encoder
         tokens = self.encoder.forward(tokens, training=training)
 
-        # 6. Extract [CLS] output and classify
-        cls_out = tokens[:, 0]                         # (B, embed_dim)
-        logits  = cls_out @ self.head_W + self.head_b  # (B, num_classes)
+        # 6. Extract [CLS] output, apply final norm, and classify
+        cls_out  = tokens[:, 0]                          # (B, embed_dim)
+        cls_norm = self.norm.forward(cls_out)            # (B, embed_dim)
+        logits   = cls_norm @ self.head_W + self.head_b  # (B, num_classes)
 
-        self._cache = dict(patches=patches, cls_out=cls_out)
+        self._cache = dict(patches=patches, cls_out=cls_out, cls_norm=cls_norm)
         return logits
 
     def freeze_layers(self, until: int) -> None:
@@ -134,16 +138,20 @@ class VisionTransformer:
         Block / attention weight gradients are stored on their respective modules.
         """
         assert self._cache, "forward() must be called before backward()"
-        patches = self._cache["patches"]   # (B, num_patches, patch_dim)
-        cls_out = self._cache["cls_out"]   # (B, embed_dim)
+        patches  = self._cache["patches"]   # (B, num_patches, patch_dim)
+        cls_out  = self._cache["cls_out"]   # (B, embed_dim)
+        cls_norm = self._cache["cls_norm"]  # (B, embed_dim)
 
         B          = grad_logits.shape[0]
         patch_dim  = patches.shape[2]
 
-        # 1. Classification head: logits = cls_out @ head_W + head_b
-        self.grad_head_W = cls_out.T @ grad_logits           # (embed_dim, num_classes)
+        # 1. Classification head: logits = cls_norm @ head_W + head_b
+        self.grad_head_W = cls_norm.T @ grad_logits          # (embed_dim, num_classes)
         self.grad_head_b = grad_logits.sum(axis=0)           # (num_classes,)
-        grad_cls_out     = grad_logits @ self.head_W.T       # (B, embed_dim)
+        grad_cls_norm    = grad_logits @ self.head_W.T       # (B, embed_dim)
+
+        # 1b. Final LayerNorm
+        grad_cls_out = self.norm.backward(grad_cls_norm)     # (B, embed_dim)
 
         # 2. CLS extraction: cls_out = tokens[:, 0]
         #    Route gradient back to position 0; all other positions get zero.

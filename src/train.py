@@ -40,6 +40,8 @@ def _get_params(model) -> list:
     pairs = [
         p(model.head_W,      "grad_head_W"),
         p(model.head_b,      "grad_head_b"),
+        p(model.norm.gamma,  "grad_gamma", model.norm),
+        p(model.norm.beta,   "grad_beta",  model.norm),
         p(model.patch_embed, "grad_patch_embed"),
         p(model.cls_token,   "grad_cls_token"),
         p(model.pos_embed,   "grad_pos_encoding"),
@@ -53,9 +55,13 @@ def _get_params(model) -> list:
             p(block.norm1.gamma, "grad_gamma", block.norm1),
             p(block.norm1.beta,  "grad_beta",  block.norm1),
             p(a.W_q, "grad_W_q", a),
+            p(a.b_q, "grad_b_q", a),
             p(a.W_k, "grad_W_k", a),
+            p(a.b_k, "grad_b_k", a),
             p(a.W_v, "grad_W_v", a),
+            p(a.b_v, "grad_b_v", a),
             p(a.W_o, "grad_W_o", a),
+            p(a.b_o, "grad_b_o", a),
             p(block.norm2.gamma, "grad_gamma", block.norm2),
             p(block.norm2.beta,  "grad_beta",  block.norm2),
             p(block.W1, "grad_W1", block),
@@ -72,6 +78,8 @@ def _save_checkpoint(model, epoch: int, prefix: str = "checkpoint") -> None:
     state = {
         "head_W":      model.head_W,
         "head_b":      model.head_b,
+        "norm_gamma":  model.norm.gamma,
+        "norm_beta":   model.norm.beta,
         "patch_embed": model.patch_embed,
         "cls_token":   model.cls_token,
         "pos_embed":   model.pos_embed,
@@ -80,9 +88,13 @@ def _save_checkpoint(model, epoch: int, prefix: str = "checkpoint") -> None:
         state[f"b{i}_norm1_gamma"] = block.norm1.gamma
         state[f"b{i}_norm1_beta"]  = block.norm1.beta
         state[f"b{i}_W_q"] = block.attn.W_q
+        state[f"b{i}_b_q"] = block.attn.b_q
         state[f"b{i}_W_k"] = block.attn.W_k
+        state[f"b{i}_b_k"] = block.attn.b_k
         state[f"b{i}_W_v"] = block.attn.W_v
+        state[f"b{i}_b_v"] = block.attn.b_v
         state[f"b{i}_W_o"] = block.attn.W_o
+        state[f"b{i}_b_o"] = block.attn.b_o
         state[f"b{i}_norm2_gamma"] = block.norm2.gamma
         state[f"b{i}_norm2_beta"]  = block.norm2.beta
         state[f"b{i}_W1"] = block.W1
@@ -106,6 +118,8 @@ def load_weights(model, path: str, skip_head: bool = False) -> None:
     model.patch_embed[:] = state["patch_embed"]
     model.cls_token[:]   = state["cls_token"]
     model.pos_embed[:]   = state["pos_embed"]
+    model.norm.gamma[:]  = state["norm_gamma"]
+    model.norm.beta[:]   = state["norm_beta"]
     if not skip_head:
         model.head_W[:] = state["head_W"]
         model.head_b[:] = state["head_b"]
@@ -113,9 +127,13 @@ def load_weights(model, path: str, skip_head: bool = False) -> None:
         block.norm1.gamma[:] = state[f"b{i}_norm1_gamma"]
         block.norm1.beta[:]  = state[f"b{i}_norm1_beta"]
         block.attn.W_q[:]    = state[f"b{i}_W_q"]
+        block.attn.b_q[:]    = state[f"b{i}_b_q"]
         block.attn.W_k[:]    = state[f"b{i}_W_k"]
+        block.attn.b_k[:]    = state[f"b{i}_b_k"]
         block.attn.W_v[:]    = state[f"b{i}_W_v"]
+        block.attn.b_v[:]    = state[f"b{i}_b_v"]
         block.attn.W_o[:]    = state[f"b{i}_W_o"]
+        block.attn.b_o[:]    = state[f"b{i}_b_o"]
         block.norm2.gamma[:] = state[f"b{i}_norm2_gamma"]
         block.norm2.beta[:]  = state[f"b{i}_norm2_beta"]
         block.W1[:]          = state[f"b{i}_W1"]
