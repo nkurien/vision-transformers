@@ -67,7 +67,7 @@ def _get_params(model) -> list:
     return pairs
 
 
-def _save_checkpoint(model, epoch: int) -> None:
+def _save_checkpoint(model, epoch: int, prefix: str = "checkpoint") -> None:
     os.makedirs("weights", exist_ok=True)
     state = {
         "head_W":      model.head_W,
@@ -89,21 +89,26 @@ def _save_checkpoint(model, epoch: int) -> None:
         state[f"b{i}_b1"] = block.b1
         state[f"b{i}_W2"] = block.W2
         state[f"b{i}_b2"] = block.b2
-    np.save(f"weights/checkpoint_epoch_{epoch}.npy", state, allow_pickle=True)
+    np.save(f"weights/{prefix}_epoch_{epoch}.npy", state, allow_pickle=True)
 
 
-def load_weights(model, path: str) -> None:
+def load_weights(model, path: str, skip_head: bool = False) -> None:
     """Load a checkpoint or exported pretrained weights into model in-place.
 
     Accepts any .npy file saved by _save_checkpoint or export_timm_weights.py —
     both use the same key schema.
+
+    Args:
+        skip_head: When True, skip head_W and head_b. Use this when fine-tuning
+                   on a different number of classes than the pretrained checkpoint.
     """
     state = np.load(path, allow_pickle=True).item()
     model.patch_embed[:] = state["patch_embed"]
     model.cls_token[:]   = state["cls_token"]
     model.pos_embed[:]   = state["pos_embed"]
-    model.head_W[:]      = state["head_W"]
-    model.head_b[:]      = state["head_b"]
+    if not skip_head:
+        model.head_W[:] = state["head_W"]
+        model.head_b[:] = state["head_b"]
     for i, block in enumerate(model.encoder.blocks):
         block.norm1.gamma[:] = state[f"b{i}_norm1_gamma"]
         block.norm1.beta[:]  = state[f"b{i}_norm1_beta"]
@@ -147,8 +152,10 @@ def cosine_schedule(
 # ---------------------------------------------------------------------------
 
 class Adam:
-    """Adam optimiser with L2 weight decay added to the gradient before the
-    moment update (i.e. not decoupled).
+    """AdamW optimiser — decoupled weight decay.
+
+    Moments track raw gradients only. Decay applied directly to weights as
+    `w -= lr * weight_decay * w`, separate from the Adam moment update.
 
     Args:
         params:       list of (weight, grad) tuples; update .params with fresh
@@ -156,7 +163,7 @@ class Adam:
         lr:           Learning rate; can be changed between steps via .lr.
         beta1, beta2: Exponential decay rates for first and second moments.
         eps:          Denominator stability constant.
-        weight_decay: L2 coefficient applied to weight before moment update.
+        weight_decay: Decoupled L2 decay coefficient.
     """
 
     def __init__(
@@ -256,7 +263,10 @@ def validate(
     Returns:
         (mean_loss, accuracy).
     """
-    N             = X.shape[0]
+    N = X.shape[0]
+    if N == 0:
+        return 0.0, 0.0
+
     total_loss    = 0.0
     total_correct = 0
     num_batches   = 0
@@ -289,19 +299,21 @@ def train(
     lr:      float,
     batch_size: int,
     warmup_epochs: int = 5,
+    checkpoint_prefix: str = "checkpoint",
 ) -> dict:
     """Train model with cosine LR schedule and early stopping (patience=10).
 
-    Saves a checkpoint after every epoch to weights/checkpoint_epoch_{n}.npy.
+    Saves a checkpoint after every epoch to weights/{checkpoint_prefix}_epoch_{n}.npy.
 
     Args:
-        model:         VisionTransformer.
-        X_train/y_train: Training images (N, C, H, W) and integer labels (N,).
-        X_val/y_val:   Validation images and labels.
-        epochs:        Maximum epochs.
-        lr:            Peak learning rate (end of warmup).
-        batch_size:    Mini-batch size.
-        warmup_epochs: Epochs for linear LR warmup.
+        model:              VisionTransformer.
+        X_train/y_train:    Training images (N, C, H, W) and integer labels (N,).
+        X_val/y_val:        Validation images and labels.
+        epochs:             Maximum epochs.
+        lr:                 Peak learning rate (end of warmup).
+        batch_size:         Mini-batch size.
+        warmup_epochs:      Epochs for linear LR warmup.
+        checkpoint_prefix:  Filename prefix for saved checkpoints.
 
     Returns:
         history: dict of lists — train_loss, train_acc, val_loss, val_acc, lr.
@@ -325,7 +337,7 @@ def train(
 
         val_loss, val_acc = validate(model, X_val, y_val, batch_size)
 
-        _save_checkpoint(model, epoch + 1)
+        _save_checkpoint(model, epoch + 1, prefix=checkpoint_prefix)
 
         history["train_loss"].append(train_loss)
         history["train_acc"].append(train_acc)

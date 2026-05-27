@@ -6,5 +6,7 @@ tqdm==4.67.3
 pytest==9.0.3
 ruff==0.15.12
 
+pyyaml
+
 # Phase 3 only — export timm weights to NumPy (not a runtime dependency)
 # timm
