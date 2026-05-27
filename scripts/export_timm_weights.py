@@ -23,7 +23,7 @@ from train import load_weights
 # Helpers
 # ---------------------------------------------------------------------------
 
-_UNSUPPORTED_KEYS: set = set()
+_UNSUPPORTED_KEYS: set[str] = set()  # keys to silently drop; extend if model variants add unsupported params
 
 
 def _map_weights(state_dict, num_layers: int) -> dict:

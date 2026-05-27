@@ -118,7 +118,7 @@ def load_weights(model, path: str, skip_head: bool = False) -> None:
     """
     state = np.load(path, allow_pickle=True).item()
     model.patch_embed[:]      = state["patch_embed"]
-    model.patch_embed_bias[:] = state["patch_embed_bias"]
+    model.patch_embed_bias[:] = state.get("patch_embed_bias", np.zeros_like(model.patch_embed_bias))
     model.cls_token[:]   = state["cls_token"]
     model.pos_embed[:]   = state["pos_embed"]
     model.norm.gamma[:]  = state["norm_gamma"]
