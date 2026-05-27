@@ -84,9 +84,8 @@ def test_expected_key_present(mapped, key):
     assert key in mapped, f"missing key: {key}"
 
 
-def test_patch_embed_bias_not_exported(mapped):
-    # patch_embed.proj.bias is the only key we drop
-    assert "patch_embed_bias" not in mapped
+def test_patch_embed_bias_exported(mapped):
+    assert "patch_embed_bias" in mapped
 
 
 # ---------------------------------------------------------------------------
