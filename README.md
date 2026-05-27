@@ -8,7 +8,7 @@ Pure NumPy implementation of multi-head self-attention and Vision Transformers (
 |-------|------|--------|
 | 1 | MultiHeadAttention + backprop | ✅ Done |
 | 2 | ViT on MNIST (≥95% val acc) | ✅ Done — 98.58% val acc @ epoch 37 |
-| 3 | Fine-tune on Stanford Dogs (≥75%) | ⏳ Not started |
+| 3 | Fine-tune on Stanford Dogs (≥75%) | 🔧 Ready — pipeline complete, needs data + pretrained weights |
 | 4 | Attention visualisation | ⏳ Not started |
 
 ## Setup
@@ -18,7 +18,11 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-For Phase 3 fine-tuning, also install `timm` to export pre-trained weights (one-time, not a runtime dependency).
+For Phase 3 fine-tuning, also install `timm` and `torch` to export pre-trained weights (one-time, not a runtime dependency):
+
+```bash
+pip install timm torch
+```
 
 ## Training
 
@@ -31,6 +35,28 @@ python scripts/train_mnist.py --epochs 10 --batch-size 128
 ```
 
 Checkpoints are saved to `weights/checkpoint_epoch_{n}.npy` after every epoch. Training history is saved to `weights/mnist_history.npy` on completion.
+
+### Stanford Dogs fine-tuning
+
+```bash
+# 1. Export pretrained ViT-Base weights from timm (one-time)
+python scripts/export_timm_weights.py --model vit_base_patch16_224 --output weights/ --validate
+
+# 2. Download Stanford Dogs to data/dogs/Images/ (see references below)
+
+# 3. Fine-tune
+python scripts/train_dogs.py \
+    --config configs/vit_base.yaml \
+    --pretrained weights/vit_base_patch16_224_pretrained.npy
+
+# Smoke test with a small slice of data
+python scripts/train_dogs.py \
+    --config configs/vit_base.yaml \
+    --pretrained weights/vit_base_patch16_224_pretrained.npy \
+    --epochs 2 --batch-size 8 --max-per-class 10
+```
+
+Dogs checkpoints are saved to `weights/dogs_checkpoint_epoch_{n}.npy` (separate from MNIST checkpoints). History and class names are saved to `weights/dogs_history.npy`.
 
 **CPU runtime:** ~18 min/epoch for ViT-Small at 96x96. Early stopping triggers after 10 epochs of no val_loss improvement.
 
@@ -56,7 +82,7 @@ Key implementation choices:
 - Learnable positional encoding and [CLS] token
 - Numerically stable softmax backward
 - LayerNorm backward via the Ba et al. (2016) closed-form expression
-- Adam with L2 weight decay and cosine LR schedule with linear warmup
+- AdamW (decoupled weight decay) with cosine LR schedule and linear warmup
 
 ## Stanford Dogs — Phase 3 notes
 
@@ -64,7 +90,7 @@ The dataset has ~171 images per class, which is tight. A few things that matter 
 
 - **Weight transfer** — exports ViT-Base weights from timm, splits the fused QKV matrix `(3D, D)` into separate W_q/W_k/W_v, saves to `.npy`. Run `python scripts/export_timm_weights.py --validate` to confirm forward pass matches timm before fine-tuning.
 - **Freezing** — first 8 of 12 blocks frozen via `model.freeze_layers(until=-4)`. Full fine-tuning risks overfitting at 171/class.
-- **Augmentation** — random crop, horizontal flip, color jitter applied per-batch in the training loop (not pre-cached), so each epoch sees different augmentations.
+- **Augmentation** — not yet implemented; planned for the training loop (random crop, horizontal flip, colour jitter per-batch so each epoch sees different augmentations).
 
 Expected val accuracy with this setup: ~80-85% without augmentation, ~85-90% with. The ≥75% target is conservative.
 
