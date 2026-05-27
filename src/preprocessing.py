@@ -4,6 +4,7 @@ import struct
 import urllib.request
 
 import numpy as np
+from PIL import Image
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +91,105 @@ def load_mnist(
     y_val   = labels[50_000:].astype(np.int32)
 
     return X_train, y_train, X_val, y_val
+
+
+# ---------------------------------------------------------------------------
+# Stanford Dogs
+# ---------------------------------------------------------------------------
+
+# ImageNet channel statistics — applied after scaling pixels to [0, 1]
+_IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+_IMAGENET_STD  = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+def _load_image(path: str, img_size: int) -> np.ndarray:
+    """Load a JPEG/PNG, resize to (img_size, img_size), return (3, H, W) float32 normalised."""
+    img = Image.open(path).convert("RGB")
+    img = img.resize((img_size, img_size), Image.BILINEAR)
+    x   = np.asarray(img, dtype=np.float32) / 255.0          # (H, W, 3) in [0, 1]
+    x   = (x - _IMAGENET_MEAN) / _IMAGENET_STD               # ImageNet normalise
+    return x.transpose(2, 0, 1)                               # (3, H, W)
+
+
+def load_dogs(
+    data_dir: str = "data/dogs/Images",
+    img_size: int = 224,
+    val_fraction: float = 0.2,
+    seed: int = 0,
+    max_per_class: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """Load Stanford Dogs from a folder-per-breed directory tree.
+
+    Expected layout: data_dir/{breed_folder}/{image}.jpg
+
+    Args:
+        data_dir:       Root of the Images directory.
+        img_size:       Resize target (square). Default 224 for ViT-Base.
+        val_fraction:   Fraction of each class held out for validation.
+        seed:           RNG seed for the per-class shuffle.
+        max_per_class:  Cap images per class. Useful during development to
+                        avoid loading all ~11 GB into memory at once.
+
+    Returns:
+        X_train: (N_train, 3, img_size, img_size) float32 — ImageNet normalised
+        y_train: (N_train,) int32
+        X_val:   (N_val,   3, img_size, img_size) float32
+        y_val:   (N_val,)   int32
+        class_names: sorted list of breed folder names (index == label int)
+    """
+    if not os.path.isdir(data_dir):
+        raise FileNotFoundError(
+            f"Dogs data not found at '{data_dir}'. "
+            "Download from http://vision.stanford.edu/adit/ImageSets/ and extract there."
+        )
+
+    class_names = sorted(
+        d for d in os.listdir(data_dir)
+        if os.path.isdir(os.path.join(data_dir, d))
+    )
+    if not class_names:
+        raise ValueError(f"No subdirectories found in '{data_dir}'.")
+
+    rng        = np.random.default_rng(seed)
+    X_train_list, y_train_list = [], []
+    X_val_list,   y_val_list   = [], []
+
+    for label, cls in enumerate(class_names):
+        cls_dir = os.path.join(data_dir, cls)
+        paths   = sorted(
+            os.path.join(cls_dir, f)
+            for f in os.listdir(cls_dir)
+            if f.lower().endswith((".jpg", ".jpeg", ".png"))
+        )
+        if not paths:
+            continue
+
+        rng.shuffle(paths)
+        if max_per_class is not None:
+            paths = paths[:max_per_class]
+
+        n_val  = int(len(paths) * val_fraction)
+        val_p  = paths[:n_val]
+        train_p = paths[n_val:]
+
+        for p in train_p:
+            X_train_list.append(_load_image(p, img_size))
+            y_train_list.append(label)
+
+        for p in val_p:
+            X_val_list.append(_load_image(p, img_size))
+            y_val_list.append(label)
+
+    X_train = np.stack(X_train_list).astype(np.float32)
+    y_train = np.array(y_train_list, dtype=np.int32)
+    if X_val_list:
+        X_val = np.stack(X_val_list).astype(np.float32)
+        y_val = np.array(y_val_list, dtype=np.int32)
+    else:
+        X_val = np.empty((0, 3, img_size, img_size), dtype=np.float32)
+        y_val = np.empty((0,), dtype=np.int32)
+
+    return X_train, y_train, X_val, y_val, class_names
 
 
 # ---------------------------------------------------------------------------
