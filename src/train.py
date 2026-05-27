@@ -158,10 +158,10 @@ class Adam:
         """
         lr_t = self.lr * np.sqrt(1.0 - self.beta2 ** t) / (1.0 - self.beta1 ** t)
         for i, (w, g) in enumerate(self.params):
-            g_wd       = g + self.weight_decay * w
-            self.m[i]  = self.beta1 * self.m[i] + (1.0 - self.beta1) * g_wd
-            self.v[i]  = self.beta2 * self.v[i] + (1.0 - self.beta2) * g_wd ** 2
-            w         -= lr_t * self.m[i] / (np.sqrt(self.v[i]) + self.eps)
+            self.m[i]  = self.beta1 * self.m[i] + (1.0 - self.beta1) * g
+            self.v[i]  = self.beta2 * self.v[i] + (1.0 - self.beta2) * g ** 2
+            # decoupled weight decay (AdamW): applied directly to weights, not via gradient
+            w         -= lr_t * self.m[i] / (np.sqrt(self.v[i]) + self.eps) + self.lr * self.weight_decay * w
 
 
 # ---------------------------------------------------------------------------
