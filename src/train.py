@@ -297,7 +297,11 @@ def validate(
     total_correct = 0
     num_batches   = 0
 
-    for start in range(0, N - batch_size + 1, batch_size):
+    num_steps = (N - batch_size) // batch_size + 1
+    pbar = tqdm(range(0, N - batch_size + 1, batch_size), total=num_steps,
+                unit="batch", leave=False, desc="Validating")
+
+    for start in pbar:
         xb = X[start : start + batch_size]
         yb = y[start : start + batch_size]
         if val_transform_fn is not None:

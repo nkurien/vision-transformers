@@ -22,7 +22,7 @@ from functools import partial
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from preprocessing import augment_batch, center_crop, load_dogs
+from preprocessing import augment_batch, load_dogs
 from train import load_weights, train
 from vit import VisionTransformer
 
@@ -52,10 +52,9 @@ def main():
     batch_size = args.batch_size if args.batch_size is not None else tcfg["batch_size"]
 
     print("Loading Stanford Dogs...")
-    load_size = 256  # Larger than model input for random-crop augmentation
     X_train, y_train, X_val, y_val, class_names = load_dogs(
         data_dir=args.data_dir,
-        img_size=load_size,
+        img_size=mcfg["img_size"],
         max_per_class=args.max_per_class,
     )
     num_classes = len(class_names)
@@ -91,8 +90,7 @@ def main():
         warmup_epochs=tcfg["warmup_epochs"],
         weight_decay=tcfg["weight_decay"],
         checkpoint_prefix="dogs_checkpoint",
-        augment_fn=partial(augment_batch, crop_size=mcfg["img_size"]),
-        val_transform_fn=partial(center_crop, crop_size=mcfg["img_size"]),
+        augment_fn=partial(augment_batch, crop_size=mcfg["img_size"], pad=16),
     )
 
     best_val_acc = max(history["val_acc"])

@@ -285,3 +285,76 @@ def test_augment_batch_flip_both_outcomes_occur():
     # Assert
     assert saw_normal,  "flip never skipped across 30 seeds"
     assert saw_flipped, "flip never fired across 30 seeds"
+
+
+# ---------------------------------------------------------------------------
+# augment_batch with pad > 0
+# ---------------------------------------------------------------------------
+
+PAD_CONFIGS = [
+    (2, 3, 8, 8, 8, 4),    # square, pad=4
+    (1, 1, 6, 6, 6, 2),    # single image, pad=2
+    (4, 3, 10, 10, 10, 8), # larger pad
+]
+
+
+@pytest.mark.parametrize("B,C,H,W,crop_size,pad", PAD_CONFIGS)
+def test_augment_batch_pad_shape(B, C, H, W, crop_size, pad):
+    """pad > 0 with H == crop_size should still produce correct output shape."""
+    # Arrange
+    x = np.random.rand(B, C, H, W).astype(np.float32)
+
+    # Act
+    out = augment_batch(x, crop_size, pad=pad)
+
+    # Assert
+    assert out.shape == (B, C, crop_size, crop_size)
+
+
+def test_augment_batch_pad_output_from_reflected_source():
+    """Each output pixel must exist in the reflect-padded version of the input."""
+    # Arrange — unique values per pixel, single image
+    size, pad = 6, 4
+    x = np.arange(size * size, dtype=np.float32).reshape(1, 1, size, size)
+    padded = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='reflect')
+
+    for seed in range(20):
+        np.random.seed(seed)
+
+        # Act
+        out = augment_batch(x, crop_size=size, pad=pad)
+        img = out[0, 0]  # (size, size)
+
+        # Assert — every row in the output must appear somewhere in the padded source
+        # (either normal or h-flipped, since augment_batch may flip)
+        padded_2d = padded[0, 0]
+        for r in range(size):
+            row = img[r]
+            found = False
+            for pr in range(padded_2d.shape[0]):
+                window = padded_2d[pr, :]
+                # Check all possible horizontal slices (and their flips)
+                for c in range(padded_2d.shape[1] - size + 1):
+                    slc = window[c:c + size]
+                    if np.allclose(row, slc) or np.allclose(row, slc[::-1]):
+                        found = True
+                        break
+                if found:
+                    break
+            assert found, f"seed={seed} row={r}: output row not found in padded source"
+
+
+def test_augment_batch_pad_crop_position_varies():
+    """With pad > 0 and H == crop_size, different crops should be selected."""
+    # Arrange — without padding, crop would always be the same (randint(0,1)==0)
+    size, pad = 6, 4
+    x = np.arange(size * size, dtype=np.float32).reshape(1, 1, size, size)
+
+    outputs = []
+    for seed in range(30):
+        np.random.seed(seed)
+        outputs.append(augment_batch(x, crop_size=size, pad=pad)[0].copy())
+
+    # Assert — not all outputs identical (padding enables spatial jitter)
+    assert not all(np.array_equal(outputs[0], o) for o in outputs[1:])
+

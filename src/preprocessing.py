@@ -198,17 +198,24 @@ def load_dogs(
 # ---------------------------------------------------------------------------
 
 
-def augment_batch(x: np.ndarray, crop_size: int) -> np.ndarray:
+def augment_batch(x: np.ndarray, crop_size: int, pad: int = 0) -> np.ndarray:
     """Random crop + random horizontal flip for a training mini-batch.
 
     Args:
         x:         (B, C, H, W) images — H and W must be >= crop_size.
         crop_size: Target spatial size (e.g. 224 for ViT-Base).
+        pad:       Pixels of reflect-padding added on each side before cropping.
+                   Use when images are already at crop_size to get spatial jitter
+                   without loading larger images into memory.
 
     Returns:
         (B, C, crop_size, crop_size) augmented batch.
     """
     B, C, H, W = x.shape
+    if pad > 0:
+        x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='reflect')
+        H += 2 * pad
+        W += 2 * pad
     out = np.empty((B, C, crop_size, crop_size), dtype=x.dtype)
     for i in range(B):
         top  = np.random.randint(0, H - crop_size + 1)
