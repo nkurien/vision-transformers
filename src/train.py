@@ -216,7 +216,8 @@ class Adam:
             self.m[i]  = self.beta1 * self.m[i] + (1.0 - self.beta1) * g
             self.v[i]  = self.beta2 * self.v[i] + (1.0 - self.beta2) * g ** 2
             # decoupled weight decay (AdamW): applied directly to weights, not via gradient
-            w         -= lr_t * self.m[i] / (np.sqrt(self.v[i]) + self.eps) + self.lr * self.weight_decay * w
+            w *= 1.0 - self.lr * self.weight_decay
+            w -= lr_t * self.m[i] / (np.sqrt(self.v[i]) + self.eps)
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +225,8 @@ class Adam:
 # ---------------------------------------------------------------------------
 
 def train_one_epoch(
-    model, X: np.ndarray, y: np.ndarray, batch_size: int, optimizer: Adam, t: int
+    model, X: np.ndarray, y: np.ndarray, batch_size: int, optimizer: Adam, t: int,
+    augment_fn=None,
 ) -> tuple[float, float]:
     """One full pass over the training data.
 
@@ -252,6 +254,8 @@ def train_one_epoch(
     for start in pbar:
         idx      = indices[start : start + batch_size]
         xb, yb   = X[idx], y[idx]
+        if augment_fn is not None:
+            xb = augment_fn(xb)
 
         logits            = model.forward(xb, training=True)
         loss, grad_logits = _cross_entropy(logits, yb)
@@ -271,7 +275,8 @@ def train_one_epoch(
 
 
 def validate(
-    model, X: np.ndarray, y: np.ndarray, batch_size: int
+    model, X: np.ndarray, y: np.ndarray, batch_size: int,
+    val_transform_fn=None,
 ) -> tuple[float, float]:
     """Evaluate the model without weight updates.
 
@@ -295,6 +300,8 @@ def validate(
     for start in range(0, N - batch_size + 1, batch_size):
         xb = X[start : start + batch_size]
         yb = y[start : start + batch_size]
+        if val_transform_fn is not None:
+            xb = val_transform_fn(xb)
 
         logits   = model.forward(xb, training=False)
         loss, _  = _cross_entropy(logits, yb)
@@ -322,6 +329,8 @@ def train(
     warmup_epochs: int = 5,
     weight_decay: float = 1e-5,
     checkpoint_prefix: str = "checkpoint",
+    augment_fn=None,
+    val_transform_fn=None,
 ) -> dict:
     """Train model with cosine LR schedule and early stopping (patience=10).
 
@@ -336,6 +345,8 @@ def train(
         batch_size:         Mini-batch size.
         warmup_epochs:      Epochs for linear LR warmup.
         checkpoint_prefix:  Filename prefix for saved checkpoints.
+        augment_fn:         Callable (batch) → batch, applied to training mini-batches.
+        val_transform_fn:   Callable (batch) → batch, applied to validation mini-batches.
 
     Returns:
         history: dict of lists — train_loss, train_acc, val_loss, val_acc, lr.
@@ -353,11 +364,12 @@ def train(
         optimizer.lr = current_lr
 
         train_loss, train_acc = train_one_epoch(
-            model, X_train, y_train, batch_size, optimizer, t
+            model, X_train, y_train, batch_size, optimizer, t,
+            augment_fn=augment_fn,
         )
         t += batches_per_epoch
 
-        val_loss, val_acc = validate(model, X_val, y_val, batch_size)
+        val_loss, val_acc = validate(model, X_val, y_val, batch_size, val_transform_fn=val_transform_fn)
 
         _save_checkpoint(model, epoch + 1, prefix=checkpoint_prefix)
 

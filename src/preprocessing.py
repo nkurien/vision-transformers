@@ -192,6 +192,50 @@ def load_dogs(
     return X_train, y_train, X_val, y_val, class_names
 
 
+
+# ---------------------------------------------------------------------------
+# Data augmentation
+# ---------------------------------------------------------------------------
+
+
+def augment_batch(x: np.ndarray, crop_size: int) -> np.ndarray:
+    """Random crop + random horizontal flip for a training mini-batch.
+
+    Args:
+        x:         (B, C, H, W) images — H and W must be >= crop_size.
+        crop_size: Target spatial size (e.g. 224 for ViT-Base).
+
+    Returns:
+        (B, C, crop_size, crop_size) augmented batch.
+    """
+    B, C, H, W = x.shape
+    out = np.empty((B, C, crop_size, crop_size), dtype=x.dtype)
+    for i in range(B):
+        top  = np.random.randint(0, H - crop_size + 1)
+        left = np.random.randint(0, W - crop_size + 1)
+        crop = x[i, :, top:top + crop_size, left:left + crop_size]
+        if np.random.rand() < 0.5:
+            crop = crop[:, :, ::-1]
+        out[i] = crop
+    return out
+
+
+def center_crop(x: np.ndarray, crop_size: int) -> np.ndarray:
+    """Deterministic center crop for validation / inference.
+
+    Args:
+        x:         (B, C, H, W) images.
+        crop_size: Target spatial size.
+
+    Returns:
+        (B, C, crop_size, crop_size)
+    """
+    _, _, H, W = x.shape
+    top  = (H - crop_size) // 2
+    left = (W - crop_size) // 2
+    return x[:, :, top:top + crop_size, left:left + crop_size].copy()
+
+
 # ---------------------------------------------------------------------------
 # Patch extraction
 # ---------------------------------------------------------------------------
